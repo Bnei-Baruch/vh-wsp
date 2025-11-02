@@ -1,0 +1,7 @@
+.env
+
+# Replica dump files
+replica/dumps/*.dump
+replica/dumps/*.custom
+
+notes.txt

@@ -1,0 +1,252 @@
+name: vh-dev
+
+services:
+  # =============================================================================
+  # SHARED INFRASTRUCTURE SERVICES
+  # =============================================================================
+  
+  # Shared PostgreSQL Database
+  db:
+    image: postgres:12
+    container_name: vh-dev-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - vh-dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Shared NATS JetStream for messaging
+  nats:
+    image: nats:2.10-alpine
+    container_name: vh-dev-nats
+    restart: unless-stopped
+    command: [
+      "--jetstream",
+      "--store_dir", "/data",
+      "--user", "${NATS_USER:-user}",
+      "--pass", "${NATS_PASSWORD:-password}",
+      "--http_port", "8222",
+      "--port", "4222"
+    ]
+    ports:
+      - "${NATS_PORT:-4222}:4222"  # NATS client port
+      - "${NATS_MONITOR_PORT:-8222}:8222"  # NATS monitoring port
+    volumes:
+      - nats_data:/data
+    networks:
+      - vh-dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:${NATS_MONITOR_PORT:-8222}/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===================================================================
+  # NGINX REVERSE PROXY
+  # Single instance with two server blocks (web + API)
+  # ===================================================================
+  
+  nginx:
+    image: nginx:alpine
+    container_name: vh-dev-nginx
+    restart: unless-stopped
+    profiles: ["web"]
+    ports:
+      - "${NGINX_WEB_PORT:-8080}:8080"
+      - "${NGINX_API_PORT:-9000}:9000"
+    volumes:
+      - ./nginx-dev.conf:/etc/nginx/templates/default.conf.template:ro
+    # Required for Linux to access host services
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - VH_FRONT_PORT=${VH_FRONT_PORT:-3000}
+      - VH_DASH_PORT=${VH_DASH_PORT:-3001}
+      - VH_PAYMENT_PORT=${VH_PAYMENT_PORT:-3002}
+      - PROFILES_APP_PORT=${PROFILES_APP_PORT:-7471}
+      - EVENTS_APP_PORT=${EVENTS_APP_PORT:-7475}
+      - ORDERS_APP_PORT=${ORDERS_APP_PORT:-8185}
+      - NGINX_WEB_PORT=${NGINX_WEB_PORT:-8080}
+      - NGINX_API_PORT=${NGINX_API_PORT:-9000}
+      # DNS resolver (defaults to Docker's embedded DNS, can be overridden)
+      - NGINX_RESOLVER=${NGINX_RESOLVER:-127.0.0.11}
+      # Frontend service hostnames (for variable-based proxy_pass with resolver)
+      - VH_FRONT_HOSTNAME=${VH_FRONT_HOSTNAME:-host.docker.internal}
+      - VH_DASH_HOSTNAME=${VH_DASH_HOSTNAME:-host.docker.internal}
+      - VH_PAYMENT_HOSTNAME=${VH_PAYMENT_HOSTNAME:-host.docker.internal}
+      # Backend service hostnames (for variable-based proxy_pass with resolver)
+      - PROFILE_SERVICE_HOSTNAME=${PROFILE_SERVICE_HOSTNAME:-host.docker.internal}
+      - EVENTS_SERVICE_HOSTNAME=${EVENTS_SERVICE_HOSTNAME:-host.docker.internal}
+      - ORDERS_SERVICE_HOSTNAME=${ORDERS_SERVICE_HOSTNAME:-host.docker.internal}
+    networks:
+      - vh-dev-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${NGINX_WEB_PORT}/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+
+  # =============================================================================
+  # OPTIONAL: Containerized backends (for frontend devs)
+  # =============================================================================
+
+  profiles:
+    build:
+      context: ${DIR_PROFILES:-../vh-srv-profile}
+      dockerfile: Dockerfile
+    container_name: vh-srv-profiles
+    restart: unless-stopped
+    profiles: ["backend"]
+    env_file: ${DIR_PROFILES:-../vh-srv-profile}/.env
+    environment:
+      DB_HOST: vh-dev-db
+      DB_PORT: ${POSTGRES_PORT:-5432}
+      DB_USER: ${POSTGRES_USER:-user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      DB_DATABASE: profiles
+      NATS_URL: nats://${NATS_USER:-user}:${NATS_PASSWORD:-password}@vh-dev-nats:${NATS_PORT:-4222}
+    networks:
+      - vh-dev-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${NGINX_API_PORT}/profile/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      
+  orders:
+    build:
+      context: ${DIR_ORDERS:-../pay/orders}
+      dockerfile: Dockerfile
+    container_name: vh-srv-orders
+    restart: unless-stopped
+    profiles: ["backend"]
+    env_file: ${DIR_ORDERS:-../pay/orders}/.env
+    environment:
+      PGHOST: vh-dev-db
+      PGPORT: ${POSTGRES_PORT:-5432}
+      PGUSER: ${POSTGRES_USER:-user}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-password}
+      PGDATABASE: orders
+      NATS_URL: nats://${NATS_USER:-user}:${NATS_PASSWORD:-password}@vh-dev-nats:${NATS_PORT:-4222}
+    networks:
+      - vh-dev-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${NGINX_API_PORT}/pay/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  events:
+    build:
+      context: ${DIR_EVENTS:-../vh-srv-events}
+      dockerfile: Dockerfile
+    container_name: vh-srv-events
+    restart: unless-stopped
+    profiles: ["backend"]
+    env_file: ${DIR_EVENTS:-../vh-srv-events}/.env
+    environment:
+      DB_HOST: vh-dev-db
+      DB_PORT: ${POSTGRES_PORT:-5432}
+      DB_USER: ${POSTGRES_USER:-user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      DB_DATABASE: events
+    networks:
+      - vh-dev-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${NGINX_API_PORT}/events/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===================================================================
+  # OPTIONAL: Containerized frontends (for backend devs)
+  # ===================================================================
+  
+  vh-front:
+    build:
+      context: ${DIR_FRONT:-../vh-front}
+      dockerfile: Dockerfile
+      args:
+        PUBLIC_URL: "http://localhost:${NGINX_WEB_PORT}/"
+        REACT_APP_COMMIT_SHA: dev
+    container_name: vh-front
+    restart: unless-stopped
+    profiles: ["web-app"]
+    environment:
+      - NODE_ENV=development
+    networks:
+      - vh-dev-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${NGINX_WEB_PORT}/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  vh-dash:
+    build:
+      context: ${DIR_DASH:-../vh-dash}
+      dockerfile: Dockerfile
+      args:
+        PUBLIC_URL: "http://localhost:${NGINX_WEB_PORT}/dash"
+        REACT_APP_COMMIT_SHA: dev
+    container_name: vh-dash
+    restart: unless-stopped
+    profiles: ["web-app"]
+    environment:
+      - NODE_ENV=development
+    networks:
+      - vh-dev-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${NGINX_WEB_PORT}/dash"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  vh-payment:
+    build:
+      context: ${DIR_PAYMENT:-../pay/vh-payment}
+      dockerfile: Dockerfile
+      args:
+        PUBLIC_URL: "http://localhost:${NGINX_WEB_PORT}/pay"
+        REACT_APP_COMMIT_SHA: dev
+    container_name: vh-payment
+    restart: unless-stopped
+    profiles: ["web-app"]
+    environment:
+      - NODE_ENV=development
+    networks:
+      - vh-dev-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${NGINX_WEB_PORT}/pay"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  db_data:
+    driver: local
+  nats_data:
+    driver: local
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  vh-dev-network:
+    name: vh-dev-network
+    driver: bridge
+    

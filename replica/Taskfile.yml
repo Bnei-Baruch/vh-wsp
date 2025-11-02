@@ -1,0 +1,237 @@
+# https://taskfile.dev
+# Replica Database Management Tool
+
+version: '3'
+
+vars:
+  POSTGRES_USER: '{{default "user" .POSTGRES_USER}}'
+  POSTGRES_PASSWORD: '{{default "password" .POSTGRES_PASSWORD}}'
+  MANIFEST_FILE: '{{default "manifest.txt" .MANIFEST_FILE}}'
+  DUMPS_DIR: '{{default "./dumps" .DUMPS_DIR}}'
+
+silent: true
+
+tasks:
+
+  default:
+    desc: Show available replica management commands
+    cmds:
+      - echo "Replica Database Management Tool"
+      - echo ""
+      - echo "Available commands:"
+      - echo "  load:one    - Load a single database from dump"
+      - echo "  load:all    - Load all databases from manifest"
+      - echo "  drop:one    - Drop a single replica database"
+      - echo "  drop:all    - Drop all databases from manifest"
+      - echo "  db:shell    - Open psql shell to a database"
+      - echo "  list        - List all databases from manifest"
+      - echo ""
+      - echo "Examples:"
+      - echo "  task load:one DB=profiles_replica"
+      - echo "  task load:one DB=test_db DUMP_FILE=my_dump.dump"
+      - echo "  task drop:one DB=profiles_replica"
+      - echo "  task db:shell DB=profiles_replica"
+
+  # =============================================================================
+  # PRIVATE HELPER TASKS
+  # =============================================================================
+
+  _check_container:
+    desc: Check if vh-dev-db container is running
+    internal: true
+    cmds:
+      - |
+        if ! docker ps --filter "name=vh-dev-db" --filter "status=running" --quiet | grep -q .; then
+          echo "Error: vh-dev-db container is not running"
+          echo "Please start it with: task dev:up"
+          exit 1
+        fi
+
+  _get_dump_file:
+    desc: Get dump file path for a database from manifest
+    internal: true
+    vars:
+      DB: '{{.DB}}'
+    cmds:
+      - |
+        if [ -f "{{.MANIFEST_FILE}}" ]; then
+          DUMP_FILE=$(grep "^{{.DB}}:" "{{.MANIFEST_FILE}}" | cut -d: -f2)
+          if [ -n "$DUMP_FILE" ]; then
+            echo "$DUMP_FILE"
+          else
+            echo "Error: Database '{{.DB}}' not found in manifest"
+            exit 1
+          fi
+        else
+          echo "Error: Manifest file '{{.MANIFEST_FILE}}' not found"
+          exit 1
+        fi
+
+  _parse_manifest:
+    desc: Parse manifest file and return database names
+    internal: true
+    cmds:
+      - |
+        if [ -f "{{.MANIFEST_FILE}}" ]; then
+          cut -d: -f1 "{{.MANIFEST_FILE}}"
+        else
+          echo "Error: Manifest file '{{.MANIFEST_FILE}}' not found"
+          exit 1
+        fi
+
+  # =============================================================================
+  # LOAD TASKS
+  # =============================================================================
+
+  load:one:
+    desc: Load a single database from dump file
+    vars:
+      DB: '{{.DB}}'
+      DUMP_FILE: '{{.DUMP_FILE}}'
+    cmds:
+      - task: _check_container
+      - |
+        # Determine dump file
+        if [ -n "{{.DUMP_FILE}}" ]; then
+          DUMP_FILE="{{.DUMP_FILE}}"
+        else
+          if [ -f "{{.MANIFEST_FILE}}" ]; then
+            DUMP_FILE=$(grep "^{{.DB}}:" "{{.MANIFEST_FILE}}" | cut -d: -f2)
+            if [ -z "$DUMP_FILE" ]; then
+              echo "Error: Database '{{.DB}}' not found in manifest"
+              exit 1
+            fi
+          else
+            echo "Error: Manifest file '{{.MANIFEST_FILE}}' not found"
+            exit 1
+          fi
+        fi
+        
+        # Clean up dump file path (remove ./ prefix if present)
+        if [ "${DUMP_FILE#./}" != "$DUMP_FILE" ]; then
+          DUMP_FILE="${DUMP_FILE#./}"
+        fi
+        
+        # Check if dump file exists
+        if [ ! -f "{{.DUMPS_DIR}}/$DUMP_FILE" ]; then
+          echo "Error: Dump file '{{.DUMPS_DIR}}/$DUMP_FILE' not found"
+          exit 1
+        fi
+        
+        echo "Loading database '{{.DB}}' from dump file '$DUMP_FILE'..."
+        
+        # Terminate active connections and drop database
+        docker exec vh-dev-db psql -U {{.POSTGRES_USER}} -d postgres -c "
+          SELECT pg_terminate_backend(pid) 
+          FROM pg_stat_activity 
+          WHERE datname='{{.DB}}' AND pid <> pg_backend_pid();
+        " || true
+        
+        docker exec vh-dev-db psql -U {{.POSTGRES_USER}} -d postgres -c "
+          DROP DATABASE IF EXISTS \"{{.DB}}\";
+        " || true
+        
+        # Create fresh database
+        docker exec vh-dev-db psql -U {{.POSTGRES_USER}} -d postgres -c "
+          CREATE DATABASE \"{{.DB}}\";
+        "
+        
+        # Copy dump file to container and restore
+        docker cp "{{.DUMPS_DIR}}/$DUMP_FILE" vh-dev-db:/tmp/dump_file.dump
+        docker exec vh-dev-db pg_restore -U {{.POSTGRES_USER}} -d {{.DB}} --no-owner --no-privileges -v /tmp/dump_file.dump
+        docker exec vh-dev-db rm /tmp/dump_file.dump
+        
+        echo "Database '{{.DB}}' loaded successfully from '$DUMP_FILE'"
+
+  load:all:
+    desc: Load all databases from manifest
+    cmds:
+      - task: _check_container
+      - |
+        echo "Loading all databases from manifest..."
+        while IFS=: read -r DB DUMP_FILE; do
+          if [ -n "$DB" ] && [ -n "$DUMP_FILE" ]; then
+            echo ""
+            echo "Loading $DB from $DUMP_FILE..."
+            task load:one DB="$DB" DUMP_FILE="$DUMP_FILE"
+          fi
+        done < "{{.MANIFEST_FILE}}"
+        echo ""
+        echo "All databases loaded successfully"
+
+  # =============================================================================
+  # DROP TASKS
+  # =============================================================================
+
+  drop:one:
+    desc: Drop a single replica database
+    vars:
+      DB: '{{.DB}}'
+    cmds:
+      - task: _check_container
+      - |
+        echo "Dropping database '{{.DB}}'..."
+        
+        # Terminate active connections
+        docker exec vh-dev-db psql -U {{.POSTGRES_USER}} -d postgres -c "
+          SELECT pg_terminate_backend(pid) 
+          FROM pg_stat_activity 
+          WHERE datname='{{.DB}}' AND pid <> pg_backend_pid();
+        " || true
+        
+        # Drop database
+        docker exec vh-dev-db psql -U {{.POSTGRES_USER}} -d postgres -c "
+          DROP DATABASE IF EXISTS \"{{.DB}}\";
+        "
+        
+        echo "Database '{{.DB}}' dropped successfully"
+
+  drop:all:
+    desc: Drop all databases from manifest
+    cmds:
+      - task: _check_container
+      - |
+        echo "Dropping all databases from manifest..."
+        while IFS=: read -r DB DUMP_FILE; do
+          if [ -n "$DB" ] && [ -n "$DUMP_FILE" ]; then
+            echo "Dropping $DB..."
+            task drop:one DB="$DB"
+          fi
+        done < "{{.MANIFEST_FILE}}"
+        echo ""
+        echo "All databases dropped successfully"
+
+  # =============================================================================
+  # UTILITY TASKS
+  # =============================================================================
+
+  db:shell:
+    desc: Open psql shell to a replica database
+    vars:
+      DB: '{{.DB}}'
+    cmds:
+      - task: _check_container
+      - |
+        echo "Opening psql shell for database '{{.DB}}'..."
+        docker exec -it vh-dev-db psql -U {{.POSTGRES_USER}} -d {{.DB}}
+
+  list:
+    desc: List all databases from manifest
+    cmds:
+      - |
+        if [ -f "{{.MANIFEST_FILE}}" ]; then
+          echo "Databases in manifest:"
+          echo "====================="
+          while IFS=: read -r DB DUMP_FILE; do
+            if [ -n "$DB" ] && [ -n "$DUMP_FILE" ]; then
+              if [ -f "{{.DUMPS_DIR}}/$DUMP_FILE" ]; then
+                echo "✓ $DB -> $DUMP_FILE"
+              else
+                echo "✗ $DB -> $DUMP_FILE (file not found)"
+              fi
+            fi
+          done < "{{.MANIFEST_FILE}}"
+        else
+          echo "Error: Manifest file '{{.MANIFEST_FILE}}' not found"
+          exit 1
+        fi

@@ -1,0 +1,379 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  DIR_PROFILES: '{{default "../vh-srv-profile" .DIR_PROFILES}}'
+  DIR_ORDERS:   '{{default "../pay/orders" .DIR_ORDERS}}'
+  DIR_EVENTS:   '{{default "../vh-srv-events" .DIR_EVENTS}}'
+  DIR_FRONT: '{{default "../vh-front" .DIR_FRONT}}'
+  DIR_DASH: '{{default "../vh-dash" .DIR_DASH}}'
+  DIR_PAYMENT: '{{default "../pay/vh-payment" .DIR_PAYMENT}}'
+  POSTGRES_USER: '{{default "user" .POSTGRES_USER}}'
+  POSTGRES_PASSWORD: '{{default "password" .POSTGRES_PASSWORD}}'
+  POSTGRES_PORT: '{{default "5432" .POSTGRES_PORT}}'
+  NATS_PORT: '{{default "4222" .NATS_PORT}}'
+  NATS_MONITOR_PORT: '{{default "8222" .NATS_MONITOR_PORT}}'
+  NGINX_WEB_PORT: '{{default "8080" .NGINX_WEB_PORT}}'
+  NGINX_API_PORT: '{{default "9000" .NGINX_API_PORT}}'
+
+dotenv: ['.env']
+
+silent: true
+
+includes:
+  replica:
+    taskfile: ./replica/Taskfile.yml
+    dir: ./replica
+
+tasks:
+
+  default: echo "Virtual Home Development Environment"
+
+  # Private helper: run a task in a sub-project Taskfile, with correct CWD.
+  _run:
+    internal: true
+    vars:
+      DIR:    '{{.DIR}}'      # project directory
+      TARGET: '{{.TARGET}}'   # task name in that project's Taskfile
+    dir: '{{.DIR}}'           # ensures the working directory is the project folder
+    cmds:
+      - task -t Taskfile.yml {{.TARGET}}
+
+  # Private helper: run a task in each backend sub-project.
+  _run_all_backend_services:
+    internal: true
+    vars:
+      TARGET: '{{.TARGET}}'   # task name in each project's Taskfile
+    cmds:
+      - task: _run 
+        vars:
+          DIR: 
+            ref: .DIR_ORDERS
+          TARGET: '{{.TARGET}}'
+      - task: _run 
+        vars:
+          DIR: 
+            ref: .DIR_PROFILES
+          TARGET: '{{.TARGET}}'
+      - task: _run 
+        vars:
+          DIR: 
+            ref: .DIR_EVENTS
+          TARGET: '{{.TARGET}}'
+
+  # =============================================================================
+  # DEVELOPMENT INFRASTRUCTURE COMMANDS
+  # =============================================================================
+  
+  dev:up:
+    desc: Start all development infrastructure (PostgreSQL + NATS)
+    cmds:
+      - docker compose --profile infra up -d
+      - echo "All development infrastructure started!"
+      - 'echo "Shared PostgreSQL: localhost:{{.POSTGRES_PORT}}"'
+      - 'echo "Shared NATS: localhost:{{.NATS_PORT}} (monitoring: localhost:{{.NATS_MONITOR_PORT}})"'
+
+  dev:stop:
+    desc: Stop all development infrastructure (keep data)
+    cmds:
+      - docker compose --profile infra stop
+      - echo "All development infrastructure stopped (data preserved)"
+
+  dev:down:
+    desc: Stop and remove all development infrastructure
+    cmds:
+      - docker compose --profile infra down
+      - echo "All development infrastructure removed"
+
+  dev:clean:
+    desc: Stop and remove all development containers and volumes
+    cmds:
+      - docker compose --profile infra down -v --remove-orphans
+      - echo "All development environment cleaned!"
+
+  dev:status:
+    desc: Show status of all development infrastructure
+    cmds:
+      - docker compose --profile infra ps
+  
+  dev:logs:
+    desc: Show and follow logs from all development infrastructure containers
+    cmds:
+      - docker compose --profile infra logs --tail=50 -f
+
+  dev:migrate:
+    desc: Run database migrations for development environment
+    cmds:
+      - task: _run_all_backend_services 
+        vars:
+          TARGET: dev:migrate
+
+  # =============================================================================
+  # SERVICE DEVELOPMENT
+  # =============================================================================
+
+  backend:up:
+    desc: Build and start all backend services in docker compose mode
+    cmds:
+      - task: dev:up
+      - task: _run_all_backend_services 
+        vars:
+          TARGET: db:ensure
+      - docker compose --profile backend up -d --build
+      - echo "All backend services started!"
+  
+  backend:stop:
+    desc: Stop all backend services (keep data)
+    cmds:
+      - docker compose --profile backend stop
+      - task: dev:stop
+      - echo "All backend services stopped (data preserved)"
+
+  backend:down:
+    desc: Stop and remove all backend services
+    cmds:
+      - docker compose --profile backend down
+      - task: dev:down
+      - echo "All backend services removed"
+
+  backend:clean:
+    desc: Stop and remove all backend containers and volumes
+    cmds:
+      - docker compose --profile backend down -v --remove-orphans
+      - task: dev:clean
+      - echo "Backend environment cleaned!"
+
+  backend:status:
+    desc: Show status of all backend services
+    cmds:
+      - docker compose --profile backend ps
+
+  backend:logs:
+    desc: Show and follow logs from all backend services
+    cmds:
+      - docker compose --profile backend logs --tail=50 -f
+
+
+
+
+  run:all:
+    desc: Start all backend services in development mode
+    deps:
+      - task: profiles:run
+      - task: orders:run
+      - task: events:run
+
+  profiles:run:
+    desc: Start profiles service in development mode
+    cmds:
+      - task: _run
+        vars:
+          DIR:
+            ref: .DIR_PROFILES
+          TARGET: dev
+
+  orders:run:
+    desc: Start orders service in development mode
+    cmds:
+      - task: _run
+        vars:
+          DIR:
+            ref: .DIR_ORDERS
+          TARGET: dev
+
+  events:run:
+    desc: Start events service in development mode
+    cmds:
+      - task: _run
+        vars:
+          DIR:
+            ref: .DIR_EVENTS
+          TARGET: dev
+
+  # =============================================================================
+  # TESTING
+  # =============================================================================
+  
+  test:all:
+    desc: Run tests for all Go services
+    cmds:
+      - task: _run_all_backend_services 
+        vars:
+          TARGET: test
+
+  test:integration:
+    desc: Run integration tests (requires dev infrastructure)
+    cmds:
+      - echo "Starting integration tests..."
+      - task: dev:up
+      - echo "Waiting for services to be ready..."
+      - sleep 5
+      - echo "Running integration tests..."
+      - task: test:all
+      - task: dev:stop
+
+  # =============================================================================
+  # MONITORING & DEBUGGING
+  # =============================================================================  
+
+  dev:nats:monitor:
+    desc: Open NATS monitoring interface
+    cmds:
+      - 'echo "NATS monitoring available at: http://localhost:{{.NATS_MONITOR_PORT}}"'
+      - open http://localhost:{{.NATS_MONITOR_PORT}} || echo "Please open http://localhost:{{.NATS_MONITOR_PORT}} in your browser"
+
+  profiles:db:shell:
+    desc: Open PostgreSQL shell for profiles service
+    cmds:
+      - task: _run
+        vars:
+          DIR: 
+            ref: .DIR_PROFILES
+          TARGET: db:shell
+
+  orders:db:shell:
+    desc: Open PostgreSQL shell for orders service
+    cmds:
+      - task: _run
+        vars:
+          DIR: 
+            ref: .DIR_ORDERS
+          TARGET: db:shell
+
+  events:db:shell:
+    desc: Open PostgreSQL shell for events service
+    cmds:
+      - task: _run
+        vars:
+          DIR: 
+            ref: .DIR_EVENTS
+          TARGET: db:shell
+
+  # =============================================================================
+  # WEB PROXY MANAGEMENT
+  # =============================================================================
+  
+  dev:web:up:
+    desc: Start nginx proxy
+    cmds:
+      - docker compose --profile web up -d nginx
+      - echo "✅ Nginx proxy started!"
+      - echo "   Web apps → http://localhost:{{.NGINX_WEB_PORT}}"
+      - echo "   APIs → http://localhost:{{.NGINX_API_PORT}}"
+
+  dev:web:stop:
+    desc: Stop nginx proxy
+    cmds:
+      - docker compose --profile web stop nginx
+      - echo "✅ Nginx proxy stopped!"
+
+  dev:web:down:
+    desc: Stop and remove nginx proxy
+    cmds:
+      - docker compose --profile web down nginx
+      - echo "✅ Nginx proxy removed!"
+
+  dev:web:clean:
+    desc: Stop and remove all nginx proxy containers and volumes
+    cmds:
+      - docker compose --profile web down -v --remove-orphans nginx
+      - echo "✅ Nginx proxy environment cleaned!"
+
+  dev:web:status:
+    desc: Show status of nginx proxy
+    cmds:
+      - docker compose --profile web ps nginx
+
+  dev:web:logs:
+    desc: Show nginx proxy logs
+    cmds:
+      - docker compose --profile web logs --tail=50 -f nginx
+
+  dev:web:restart:
+    desc: Restart nginx proxy (reload config)
+    cmds:
+      - docker compose --profile web restart nginx
+      - echo "✅ Nginx proxy restarted!"
+
+  dev:web:reload:
+    desc: Reload nginx config without restarting
+    cmds:
+      - docker compose --profile web exec nginx nginx -s reload
+      - echo "✅ Nginx config reloaded!"
+
+  frontend:rebuild:
+    desc: "Rebuild a single frontend app container. Options: vh-front, vh-dash, vh-payment. Default is vh-front."
+    vars:
+      APP:
+        sh: 'echo ${APP:-vh-front}'
+    cmds:
+      - docker compose --profile web-app build {{.APP}}
+      - docker compose --profile web-app up -d {{.APP}}
+      - echo "✅ {{.APP}} frontend app rebuilt and restarted!"
+
+  frontend:logs:
+    desc: Show frontend logs
+    cmds:
+      - docker compose --profile web-app logs --tail=50 -f vh-front vh-dash vh-payment
+
+  # =============================================================================
+  # COMPLETE DEV ENVIRONMENT SETUPS
+  # =============================================================================
+  
+  dev:full:host:
+    desc: Frontend dev mode (FE on host, BE in containers)
+    cmds:
+      - task: dev:up
+      - |
+        VH_FRONT_HOSTNAME=host.docker.internal \
+        VH_DASH_HOSTNAME=host.docker.internal \
+        VH_PAYMENT_HOSTNAME=host.docker.internal \
+        PROFILE_SERVICE_HOSTNAME=vh-srv-profiles \
+        EVENTS_SERVICE_HOSTNAME=vh-srv-events \
+        ORDERS_SERVICE_HOSTNAME=vh-srv-orders \
+        docker compose --profile backend --profile web up -d
+      - echo ""
+      - echo "✅ Frontend dev environment ready!"
+      - echo "   Backend services running in containers"
+      - echo "   Web apps → http://localhost:{{.NGINX_WEB_PORT}}"
+      - echo "   APIs → http://localhost:{{.NGINX_API_PORT}}"
+      - echo ""
+      - echo "👉 Start frontend dev servers (hot-reload enabled):"
+      - echo "   cd {{.DIR_FRONT}} && yarn start"
+      - echo "   cd {{.DIR_DASH}} && yarn start"
+      - echo "   cd {{.DIR_PAYMENT}} && yarn start"
+
+  dev:full:container:
+    desc: Backend dev mode (FE in containers, BE on host)
+    cmds:
+      - task: dev:up
+      - |
+        VH_FRONT_HOSTNAME=vh-front \
+        VH_FRONT_PORT=80 \
+        VH_DASH_HOSTNAME=vh-dash \
+        VH_DASH_PORT=80 \
+        VH_PAYMENT_HOSTNAME=vh-payment \
+        VH_PAYMENT_PORT=80 \
+        PROFILE_SERVICE_HOSTNAME=host.docker.internal \
+        EVENTS_SERVICE_HOSTNAME=host.docker.internal \
+        ORDERS_SERVICE_HOSTNAME=host.docker.internal \
+        docker compose --profile web --profile web-app up -d --build
+      - echo ""
+      - echo "✅ Backend dev environment ready!"
+      - echo "   Frontend apps running in containers"
+      - echo "   Web apps → http://localhost:{{.NGINX_WEB_PORT}}"
+      - echo "   APIs → http://localhost:{{.NGINX_API_PORT}}"
+      - echo ""
+      - echo "👉 Start backend services for development:"
+      - echo "   cd {{.DIR_PROFILES}} && task run"
+      - echo "   cd {{.DIR_EVENTS}} && task run"
+      - echo "   cd {{.DIR_ORDERS}} && task run"
+
+  dev:full:down:
+    desc: Stop all dev services
+    cmds:
+      - docker compose --profile backend --profile web --profile web-app down
+      - echo "All dev services stopped"
+
+  

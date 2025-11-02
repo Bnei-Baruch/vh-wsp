@@ -1,0 +1,35 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../vh-srv-profile"
+		},
+		{
+			"path": "../vh-front"
+		},
+		{
+			"path": "../vh-dash"
+		},
+		{
+			"path": "../pay/orders"
+		},
+		{
+			"path": "../pay/vh-payment"
+		},
+		{
+			"path": "../pay/vh-payment-bo"
+		},
+		{
+			"path": "../pay/charge"
+		},
+		{
+			"path": "../vh-events-bo"
+		},
+		{
+			"path": "../vh-srv-events"
+		}
+	],
+	"settings": {}
+}
