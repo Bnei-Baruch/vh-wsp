@@ -9,6 +9,7 @@ services:
   db:
     image: postgres:12
     container_name: vh-dev-db
+    profiles: ["infra"]
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-user}
@@ -29,6 +30,7 @@ services:
   nats:
     image: nats:2.10-alpine
     container_name: vh-dev-nats
+    profiles: ["infra"]
     restart: unless-stopped
     command: [
       "--jetstream",
@@ -73,6 +75,8 @@ services:
       - VH_FRONT_PORT=${VH_FRONT_PORT:-3000}
       - VH_DASH_PORT=${VH_DASH_PORT:-3001}
       - VH_PAYMENT_PORT=${VH_PAYMENT_PORT:-3002}
+      - VH_PAYMENT_BO_PORT=${VH_PAYMENT_BO_PORT:-3003}
+      - VH_EVENTS_BO_PORT=${VH_EVENTS_BO_PORT:-3004}
       - PROFILES_APP_PORT=${PROFILES_APP_PORT:-7471}
       - EVENTS_APP_PORT=${EVENTS_APP_PORT:-7475}
       - ORDERS_APP_PORT=${ORDERS_APP_PORT:-8185}
@@ -84,6 +88,8 @@ services:
       - VH_FRONT_HOSTNAME=${VH_FRONT_HOSTNAME:-host.docker.internal}
       - VH_DASH_HOSTNAME=${VH_DASH_HOSTNAME:-host.docker.internal}
       - VH_PAYMENT_HOSTNAME=${VH_PAYMENT_HOSTNAME:-host.docker.internal}
+      - VH_PAYMENT_BO_HOSTNAME=${VH_PAYMENT_BO_HOSTNAME:-host.docker.internal}
+      - VH_EVENTS_BO_HOSTNAME=${VH_EVENTS_BO_HOSTNAME:-host.docker.internal}
       # Backend service hostnames (for variable-based proxy_pass with resolver)
       - PROFILE_SERVICE_HOSTNAME=${PROFILE_SERVICE_HOSTNAME:-host.docker.internal}
       - EVENTS_SERVICE_HOSTNAME=${EVENTS_SERVICE_HOSTNAME:-host.docker.internal}
@@ -95,7 +101,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-
 
   # =============================================================================
   # OPTIONAL: Containerized backends (for frontend devs)
@@ -229,6 +234,46 @@ services:
       - vh-dev-network
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:${NGINX_WEB_PORT}/pay"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  vh-payment-bo:
+    build:
+      context: ${DIR_PAYMENT_BO:-../pay/vh-payment-bo}
+      dockerfile: Dockerfile
+      args:
+        PUBLIC_URL: "http://localhost:${NGINX_WEB_PORT}/admin/payments"
+        REACT_APP_COMMIT_SHA: dev
+    container_name: vh-payment-bo
+    restart: unless-stopped
+    profiles: ["web-app"]
+    environment:
+      - NODE_ENV=development
+    networks:
+      - vh-dev-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${NGINX_WEB_PORT}/admin/payments"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  vh-events-bo:
+    build:
+      context: ${DIR_EVENTS_BO:-../vh-events-bo}
+      dockerfile: Dockerfile
+      args:
+        PUBLIC_URL: "http://localhost:${NGINX_WEB_PORT}/admin/events"
+        REACT_APP_COMMIT_SHA: dev
+    container_name: vh-events-bo
+    restart: unless-stopped
+    profiles: ["web-app"]
+    environment:
+      - NODE_ENV=development
+    networks:
+      - vh-dev-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:${NGINX_WEB_PORT}/admin/events"]
       interval: 10s
       timeout: 5s
       retries: 5

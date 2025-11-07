@@ -9,6 +9,8 @@ vars:
   DIR_FRONT: '{{default "../vh-front" .DIR_FRONT}}'
   DIR_DASH: '{{default "../vh-dash" .DIR_DASH}}'
   DIR_PAYMENT: '{{default "../pay/vh-payment" .DIR_PAYMENT}}'
+  DIR_PAYMENT_BO: '{{default "../pay/vh-payment-bo" .DIR_PAYMENT_BO}}'
+  DIR_EVENTS_BO: '{{default "../vh-events-bo" .DIR_EVENTS_BO}}'
   POSTGRES_USER: '{{default "user" .POSTGRES_USER}}'
   POSTGRES_PASSWORD: '{{default "password" .POSTGRES_PASSWORD}}'
   POSTGRES_PORT: '{{default "5432" .POSTGRES_PORT}}'
@@ -66,7 +68,7 @@ tasks:
   # DEVELOPMENT INFRASTRUCTURE COMMANDS
   # =============================================================================
   
-  dev:up:
+  infra:up:
     desc: Start all development infrastructure (PostgreSQL + NATS)
     cmds:
       - docker compose --profile infra up -d
@@ -74,150 +76,35 @@ tasks:
       - 'echo "Shared PostgreSQL: localhost:{{.POSTGRES_PORT}}"'
       - 'echo "Shared NATS: localhost:{{.NATS_PORT}} (monitoring: localhost:{{.NATS_MONITOR_PORT}})"'
 
-  dev:stop:
+  infra:stop:
     desc: Stop all development infrastructure (keep data)
     cmds:
       - docker compose --profile infra stop
       - echo "All development infrastructure stopped (data preserved)"
 
-  dev:down:
+  infra:down:
     desc: Stop and remove all development infrastructure
     cmds:
       - docker compose --profile infra down
       - echo "All development infrastructure removed"
 
-  dev:clean:
+  infra:clean:
     desc: Stop and remove all development containers and volumes
     cmds:
       - docker compose --profile infra down -v --remove-orphans
       - echo "All development environment cleaned!"
 
-  dev:status:
+  infra:status:
     desc: Show status of all development infrastructure
     cmds:
-      - docker compose --profile infra ps
+      - docker compose --profile infra ps -a db nats
   
-  dev:logs:
+  infra:logs:
     desc: Show and follow logs from all development infrastructure containers
     cmds:
-      - docker compose --profile infra logs --tail=50 -f
+      - docker compose --profile infra logs --tail=50 -f db nats
 
-  dev:migrate:
-    desc: Run database migrations for development environment
-    cmds:
-      - task: _run_all_backend_services 
-        vars:
-          TARGET: dev:migrate
-
-  # =============================================================================
-  # SERVICE DEVELOPMENT
-  # =============================================================================
-
-  backend:up:
-    desc: Build and start all backend services in docker compose mode
-    cmds:
-      - task: dev:up
-      - task: _run_all_backend_services 
-        vars:
-          TARGET: db:ensure
-      - docker compose --profile backend up -d --build
-      - echo "All backend services started!"
-  
-  backend:stop:
-    desc: Stop all backend services (keep data)
-    cmds:
-      - docker compose --profile backend stop
-      - task: dev:stop
-      - echo "All backend services stopped (data preserved)"
-
-  backend:down:
-    desc: Stop and remove all backend services
-    cmds:
-      - docker compose --profile backend down
-      - task: dev:down
-      - echo "All backend services removed"
-
-  backend:clean:
-    desc: Stop and remove all backend containers and volumes
-    cmds:
-      - docker compose --profile backend down -v --remove-orphans
-      - task: dev:clean
-      - echo "Backend environment cleaned!"
-
-  backend:status:
-    desc: Show status of all backend services
-    cmds:
-      - docker compose --profile backend ps
-
-  backend:logs:
-    desc: Show and follow logs from all backend services
-    cmds:
-      - docker compose --profile backend logs --tail=50 -f
-
-
-
-
-  run:all:
-    desc: Start all backend services in development mode
-    deps:
-      - task: profiles:run
-      - task: orders:run
-      - task: events:run
-
-  profiles:run:
-    desc: Start profiles service in development mode
-    cmds:
-      - task: _run
-        vars:
-          DIR:
-            ref: .DIR_PROFILES
-          TARGET: dev
-
-  orders:run:
-    desc: Start orders service in development mode
-    cmds:
-      - task: _run
-        vars:
-          DIR:
-            ref: .DIR_ORDERS
-          TARGET: dev
-
-  events:run:
-    desc: Start events service in development mode
-    cmds:
-      - task: _run
-        vars:
-          DIR:
-            ref: .DIR_EVENTS
-          TARGET: dev
-
-  # =============================================================================
-  # TESTING
-  # =============================================================================
-  
-  test:all:
-    desc: Run tests for all Go services
-    cmds:
-      - task: _run_all_backend_services 
-        vars:
-          TARGET: test
-
-  test:integration:
-    desc: Run integration tests (requires dev infrastructure)
-    cmds:
-      - echo "Starting integration tests..."
-      - task: dev:up
-      - echo "Waiting for services to be ready..."
-      - sleep 5
-      - echo "Running integration tests..."
-      - task: test:all
-      - task: dev:stop
-
-  # =============================================================================
-  # MONITORING & DEBUGGING
-  # =============================================================================  
-
-  dev:nats:monitor:
+  infra:nats:monitor:
     desc: Open NATS monitoring interface
     cmds:
       - 'echo "NATS monitoring available at: http://localhost:{{.NATS_MONITOR_PORT}}"'
@@ -251,10 +138,10 @@ tasks:
           TARGET: db:shell
 
   # =============================================================================
-  # WEB PROXY MANAGEMENT
+  # NGINX WEB PROXY MANAGEMENT
   # =============================================================================
   
-  dev:web:up:
+  nginx:up:
     desc: Start nginx proxy
     cmds:
       - docker compose --profile web up -d nginx
@@ -262,48 +149,206 @@ tasks:
       - echo "   Web apps → http://localhost:{{.NGINX_WEB_PORT}}"
       - echo "   APIs → http://localhost:{{.NGINX_API_PORT}}"
 
-  dev:web:stop:
+  nginx:stop:
     desc: Stop nginx proxy
     cmds:
-      - docker compose --profile web stop nginx
+      - docker compose --profile web stop
       - echo "✅ Nginx proxy stopped!"
 
-  dev:web:down:
+  nginx:down:
     desc: Stop and remove nginx proxy
     cmds:
-      - docker compose --profile web down nginx
+      - docker compose --profile web down
       - echo "✅ Nginx proxy removed!"
 
-  dev:web:clean:
+  nginx:clean:
     desc: Stop and remove all nginx proxy containers and volumes
     cmds:
-      - docker compose --profile web down -v --remove-orphans nginx
+      - docker compose --profile web down -v --remove-orphans
       - echo "✅ Nginx proxy environment cleaned!"
 
-  dev:web:status:
+  nginx:status:
     desc: Show status of nginx proxy
     cmds:
-      - docker compose --profile web ps nginx
+      - docker compose --profile web ps
 
-  dev:web:logs:
+  nginx:logs:
     desc: Show nginx proxy logs
     cmds:
-      - docker compose --profile web logs --tail=50 -f nginx
+      - docker compose --profile web logs --tail=50 -f
 
-  dev:web:restart:
+  nginx:restart:
     desc: Restart nginx proxy (reload config)
     cmds:
-      - docker compose --profile web restart nginx
+      - docker compose --profile web restart
       - echo "✅ Nginx proxy restarted!"
 
-  dev:web:reload:
+  nginx:reload:
     desc: Reload nginx config without restarting
     cmds:
       - docker compose --profile web exec nginx nginx -s reload
       - echo "✅ Nginx config reloaded!"
 
-  frontend:rebuild:
-    desc: "Rebuild a single frontend app container. Options: vh-front, vh-dash, vh-payment. Default is vh-front."
+  # =============================================================================
+  # BACKEND SERVICES COMMANDS
+  # =============================================================================
+
+  backend:up:
+    desc: Build and start all backend services in docker compose mode. Use BUILD=true to rebuild images.
+    aliases: [be:up]
+    vars:
+      BUILD: '{{default "" .BUILD}}'
+    cmds:
+      - task: infra:up
+      - task: nginx:up
+      - task: _run_all_backend_services 
+        vars:
+          TARGET: db:ensure
+      - |
+        if [ "{{.BUILD}}" = "true" ]; then
+          docker compose --profile backend up -d --build
+        else
+          docker compose --profile backend up -d
+        fi
+      - echo "All backend services started!"
+  
+  backend:stop:
+    desc: Stop all backend services (keep data)
+    aliases: [be:stop]
+    cmds:
+      - docker compose --profile backend stop
+      - echo "All backend services stopped (data preserved)"
+
+  backend:down:
+    desc: Stop and remove all backend services
+    aliases: [be:down]
+    cmds:
+      - docker compose --profile backend down
+      - echo "All backend services removed"
+
+  backend:clean:
+    desc: Stop and remove all backend containers and volumes
+    aliases: [be:clean]
+    cmds:
+      - docker compose --profile backend down -v --remove-orphans
+      - echo "Backend environment cleaned!"
+
+  backend:status:
+    desc: Show status of all backend services
+    aliases: [be:status]
+    cmds:
+      - docker compose --profile infra --profile web --profile backend ps
+
+  backend:logs:
+    desc: Show and follow logs from all backend services
+    aliases: [be:logs]
+    cmds:
+      - docker compose --profile backend logs --tail=50 -f
+  
+  backend:env:init:
+    desc: Run env:init in each backend project (ensures .env exists)
+    aliases: [be:env:init]
+    cmds:
+      - task: _run_all_backend_services
+        vars:
+          TARGET: env:init
+      - echo "Backend environment initialization (env:init) complete."
+
+  backend:migrate:
+    desc: Run database migrations for development environment
+    aliases: [be:migrate]
+    cmds:
+      - task: _run_all_backend_services 
+        vars:
+          TARGET: dev:migrate
+      - echo "Database migrations completed!"
+
+  backend:test:all:
+    desc: Run tests for all Go services
+    aliases: [be:test:all]
+    cmds:
+      - task: _run_all_backend_services 
+        vars:
+          TARGET: test
+
+  backend:test:integration:
+    desc: Run integration tests (requires dev infrastructure)
+    aliases: [be:test:integration]
+    cmds:
+      - echo "Starting integration tests..."
+      - task: infra:up
+      - echo "Waiting for services to be ready..."
+      - sleep 5
+      - echo "Running integration tests..."
+      - task: backend:test:all
+      - task: infra:stop
+  
+  backend:rebuild:one:
+    desc: "Rebuild a single backend service container. Options: profiles, events, orders. Default is profiles."
+    aliases: [be:rebuild:one]
+    vars:
+      APP:
+        sh: 'echo ${APP:-profiles}'
+    cmds:
+      - docker compose --profile backend build {{.APP}}
+      - docker compose --profile backend up -d {{.APP}}
+      - echo "✅ {{.APP}} backend service rebuilt and restarted!"
+
+  # =============================================================================
+  # FRONTEND SERVICES COMMANDS
+  # =============================================================================
+  
+  frontend:up:
+    desc: Start all frontend application containers (web-app profile). Use BUILD=true to rebuild images.
+    aliases: [fe:up]
+    vars:
+      BUILD: '{{default "" .BUILD}}'
+    cmds:
+      - task: nginx:up
+      - |
+        if [ "{{.BUILD}}" = "true" ]; then
+          docker compose --profile web-app up -d --build
+        else
+          docker compose --profile web-app up -d
+        fi
+      - echo "Frontend application containers started!"
+
+  frontend:stop:
+    desc: Stop all frontend application containers (web-app profile)
+    aliases: [fe:stop]
+    cmds:
+      - docker compose --profile web-app stop
+      - echo "Frontend application containers stopped!"
+
+  frontend:down:
+    desc: Stop and remove all frontend application containers (web-app profile)
+    aliases: [fe:down]
+    cmds:
+      - docker compose --profile web-app down
+      - echo "Frontend application containers removed!"
+
+  frontend:clean:
+    desc: Stop and remove all frontend containers and volumes (web-app profile)
+    aliases: [fe:clean]
+    cmds:
+      - docker compose --profile web-app down -v --remove-orphans
+      - echo "Frontend environment cleaned!"
+
+  frontend:status:
+    desc: Show status of all frontend application containers (web-app profile)
+    aliases: [fe:status]
+    cmds:
+      - docker compose --profile web --profile web-app ps
+  
+  frontend:logs:
+    desc: Show frontend logs
+    aliases: [fe:logs]
+    cmds:
+      - docker compose --profile web-app logs --tail=50 -f 
+
+  frontend:rebuild:one:
+    desc: "Rebuild a single frontend app container. Options: vh-front, vh-dash, vh-payment, vh-payment-bo, vh-events-bo. Default is vh-front."
+    aliases: [fe:rebuild:one]
     vars:
       APP:
         sh: 'echo ${APP:-vh-front}'
@@ -311,28 +356,26 @@ tasks:
       - docker compose --profile web-app build {{.APP}}
       - docker compose --profile web-app up -d {{.APP}}
       - echo "✅ {{.APP}} frontend app rebuilt and restarted!"
-
-  frontend:logs:
-    desc: Show frontend logs
-    cmds:
-      - docker compose --profile web-app logs --tail=50 -f vh-front vh-dash vh-payment
-
+  
   # =============================================================================
   # COMPLETE DEV ENVIRONMENT SETUPS
   # =============================================================================
   
-  dev:full:host:
-    desc: Frontend dev mode (FE on host, BE in containers)
+  all:frontend:host:
+    desc: Frontend dev mode (FE on host, nginx proxy, BE in containers, shared infra)
+    aliases: [all:frontend, all:fe]
     cmds:
-      - task: dev:up
+      - task: backend:up
       - |
         VH_FRONT_HOSTNAME=host.docker.internal \
         VH_DASH_HOSTNAME=host.docker.internal \
         VH_PAYMENT_HOSTNAME=host.docker.internal \
+        VH_PAYMENT_BO_HOSTNAME=host.docker.internal \
+        VH_EVENTS_BO_HOSTNAME=host.docker.internal \
         PROFILE_SERVICE_HOSTNAME=vh-srv-profiles \
         EVENTS_SERVICE_HOSTNAME=vh-srv-events \
         ORDERS_SERVICE_HOSTNAME=vh-srv-orders \
-        docker compose --profile backend --profile web up -d
+        docker compose --profile web up -d
       - echo ""
       - echo "✅ Frontend dev environment ready!"
       - echo "   Backend services running in containers"
@@ -343,11 +386,14 @@ tasks:
       - echo "   cd {{.DIR_FRONT}} && yarn start"
       - echo "   cd {{.DIR_DASH}} && yarn start"
       - echo "   cd {{.DIR_PAYMENT}} && yarn start"
+      - echo "   cd {{.DIR_PAYMENT_BO}} && yarn start"
+      - echo "   cd {{.DIR_EVENTS_BO}} && yarn start"
 
-  dev:full:container:
-    desc: Backend dev mode (FE in containers, BE on host)
+  all:backend:host:
+    desc: Backend dev mode (BE on host, shared infra, nginx proxy, FE in containers)
+    aliases: [all:backend, all:be]
     cmds:
-      - task: dev:up
+      - task: infra:up
       - |
         VH_FRONT_HOSTNAME=vh-front \
         VH_FRONT_PORT=80 \
@@ -355,6 +401,10 @@ tasks:
         VH_DASH_PORT=80 \
         VH_PAYMENT_HOSTNAME=vh-payment \
         VH_PAYMENT_PORT=80 \
+        VH_PAYMENT_BO_HOSTNAME=vh-payment-bo \
+        VH_PAYMENT_BO_PORT=80 \
+        VH_EVENTS_BO_HOSTNAME=vh-events-bo \
+        VH_EVENTS_BO_PORT=80 \
         PROFILE_SERVICE_HOSTNAME=host.docker.internal \
         EVENTS_SERVICE_HOSTNAME=host.docker.internal \
         ORDERS_SERVICE_HOSTNAME=host.docker.internal \
@@ -370,10 +420,25 @@ tasks:
       - echo "   cd {{.DIR_EVENTS}} && task run"
       - echo "   cd {{.DIR_ORDERS}} && task run"
 
-  dev:full:down:
+  all:stop:
+    desc: Stop all running dev services (infra, backend, web, web-app)
+    cmds:
+      - docker compose --profile infra --profile backend --profile web --profile web-app stop
+      - echo "All running dev services stopped"
+
+  all:down:
     desc: Stop all dev services
     cmds:
-      - docker compose --profile backend --profile web --profile web-app down
-      - echo "All dev services stopped"
+      - docker compose --profile infra --profile backend --profile web --profile web-app down
+      - echo "All dev services removed"
 
-  
+  all:clean:
+    desc: Remove all dev containers and volumes (infra, backend, web, web-app)
+    cmds:
+      - docker compose --profile infra --profile backend --profile web --profile web-app down -v
+      - echo "All containers and volumes removed"
+
+  all:status:
+    desc: Show status of all dev services (infra, backend, web, web-app)
+    cmds:
+      - docker compose --profile infra --profile backend --profile web --profile web-app ps

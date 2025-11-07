@@ -2,15 +2,6 @@
 
 This workspace provides a unified development environment for the Virtual Home microservices ecosystem.
 
-## 🏗️ Architecture Overview
-
-The development environment includes:
-
-- **vh-srv-profile**: User profile management service
-- **vh-srv-events**: Events management service  
-- **vh-srv-orders**: Orders and payments service
-- **Shared Infrastructure**: PostgreSQL databases, NATS messaging, development tools
-
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -32,362 +23,415 @@ The development environment includes:
    ```bash
    ./scripts/dev-setup.sh
    ```
+   This will:
+   <ol type="a">
+   <li>Verify prerequisite tools are installed</li>
+   <li>Initialize the workspace environment</li>
+   <li>Clone relevant repositories if missing</li>
+   </ol>
 
-3. **Verify setup:**
+
+3. **Get to work!:**
+   
+   Choose your [work mode](#development-workflows) and get to work.
+
+
+## 🏗️ Architecture Overview
+
+The development environment supports **full-stack development** including both backend services and multiple front-end applications. It is designed for rapid iteration, integration testing, and real-world simulation with production-like infrastructure.
+
+**Core architecture includes:**
+
+- **Backend Services**: Go-based microservices for profile management, events, orders, and payments, each with its own database schema and business logic.
+- **Frontend Applications**: React-based dashboards and web portals (e.g., membership pay, management dashboard), with local development configs for easy frontend-backend integration.
+- **Infrastructure**: 
+  - Shared PostgreSQL databases for persistent storage
+  - NATS message broker for event-driven communication
+  - Docker Compose manages service orchestration, networking, and dependencies
+  - Taskfile scripts for automated builds, migrations, and test execution
+- **Dev Tooling**:
+  - Hot reload for Go and frontend code
+  - Local configuration files (e.g., `config-dev.js`) for pointing frontends at the dev backend and auth servers
+  - MCP-powered tools for advanced database, messaging, GitLab, and shell integration from within the editor
+
+This setup allows you to develop and test backend APIs and frontend UIs together, with support for SSO integration, real API connectivity, and end-to-end workflow simulation.
+
+
+## 🔄 Development Workflows
+
+This section covers common development scenarios and how to set up your environment for each.
+
+### Backend Development
+
+#### Single Service Development
+
+For working on a single backend service in isolation:
+
+1. **Navigate to the service directory:**
    ```bash
-   task dev:status
+   cd ~/projects/vh/vh-srv-profile  # or vh-srv-events, pay/orders
+   ```
+
+2. **Use standalone infrastructure mode:**
+   ```bash
+   # View available tasks
+   task
+   
+   # Bring up standalone infrastructure (PostgreSQL + NATS)
+   task dev:s:up  # or dev:standalone:up
+   ```
+
+3. **Run, test, or debug:**
+   - Use IDE debugger or run directly: `task run`
+   - Run tests: `task test`
+   - Run with hot reload: `task dev`
+
+The standalone mode creates isolated infrastructure for that service only.
+
+#### Multiple Services Development
+
+For working with multiple backend services that need to interact:
+
+1. **Start shared infrastructure:**
+   ```bash
+   cd ~/projects/vh/wsp
+   task infra:up
+   task backend:migrate
+   ```
+
+2. **Run each service individually:**
+   ```bash
+   # In separate terminals or via IDE:
+   cd ~/projects/vh/vh-srv-profile && task run
+   cd ~/projects/vh/vh-srv-events && task run
+   cd ~/projects/vh/pay/orders && task run
+   ```
+
+All services share the same PostgreSQL and NATS instances, enabling integration testing.
+
+#### Backend with Local Frontend
+
+When you need to test your backend changes with a UI:
+
+1. **Clone and configure frontend repositories:**
+   ```bash
+   # Clone relevant frontends
+   cd ~/projects/vh
+   git clone git@gitlab.bbdev.team:vh/vh-front.git
+   git clone git@gitlab.bbdev.team:vh/vh-dash.git
+   # ... etc
+   ```
+
+2. **Configure frontend to use local backend:**
+   - Edit `config-dev.js` in each frontend repo
+   - Point API endpoints to `http://localhost:9000`
+
+3. **Start workspace with frontend containers:**
+   ```bash
+   cd ~/projects/vh/wsp
+   task all:backend:host  # Starts infra + nginx + frontend containers
+   ```
+
+4. **Run backend services locally:**
+   ```bash
+   cd ~/projects/vh/vh-srv-profile && task run
+   # ... other services
+   ```
+
+Frontend containers will proxy requests to your local backend services.
+
+### Frontend Development
+
+Frontend development requires a backend and Keycloak instance. The backend database must have users matching your Keycloak instance.
+
+#### Environment Options
+
+**Option 1: External Environment (Easiest)**
+- Use staging or production backend and Keycloak
+- Just configure `config-dev.js` with correct endpoints
+- **Pros**: No setup required
+- **Cons**: Limited data, no control over backend state
+
+**Option 2: Local Backend + External Keycloak**
+- Run backend services locally
+- Use external Keycloak (staging/production)
+- **Pros**: Full backend control, safe testing
+- **Cons**: Requires backend setup
+
+**Option 3: Local Backend + Local Keycloak**
+- Not yet available
+
+#### Single Frontend App
+
+For working on a single frontend app without cross-app navigation:
+
+```bash
+cd ~/projects/vh/vh-front  # or vh-dash, pay/vh-payment
+yarn start
+```
+
+Access directly at the dev server port (e.g., `http://localhost:3000`).
+
+#### Multiple Frontend Apps
+
+For cross-app navigation that mimics production:
+
+1. **Start workspace with nginx proxy:**
+   ```bash
+   cd ~/projects/vh/wsp
+   task nginx:up  # For production like routing (cross navigation)
+   ```
+
+2. **Run frontend dev servers:**
+   ```bash
+   cd ~/projects/vh/vh-front && yarn start
+   cd ~/projects/vh/vh-dash && yarn start
+   cd ~/projects/vh/pay/vh-payment && yarn start
+   ```
+
+3. **Access via proxy:**
+   - All apps accessible at `http://localhost:8080`
+   - Routes: `/`, `/dash`, `/pay`
+   - Hot reload still works
+
+#### Local Backend Setup for Frontend
+
+1. **Clone and configure backend repositories:**
+   ```bash
+   cd ~/projects/vh
+   git clone git@gitlab.bbdev.team:vh/vh-srv-profile.git
+   # ... clone other backends
+   ```
+
+2. **Configure backend to use external Keycloak:**
+   - Edit `.env` in each backend repo
+   - Set Keycloak URL to staging/production
+
+3. **Start workspace:**
+   ```bash
+   cd ~/projects/vh/wsp
+   task all:frontend:host  # Starts infra + nginx + backend containers
+   ```
+
+4. **Optional: Load production database dump:**
+   ```bash
+   # See replica/ directory for database dumps
+   # Modify data as needed, easily restore if needed
    ```
 
 ## 📋 Available Services
 
 | Service | Port | Description |
 |---------|------|-------------|
-| PostgreSQL | 5432 | Shared PostgreSQL RDBMS |
-| NATS | 4222 | Message broker |
-| NATS Monitor | 8222 | NATS monitoring interface |
+| PostgreSQL | 5432 | Shared PostgreSQL database |
+| NATS | 4222 | NATS message broker |
+| NATS Monitor | 8222 | NATS monitoring web interface |
+| Nginx (Web) | 8080 | Frontend reverse proxy |
+| Nginx (API) | 9000 | Backend API reverse proxy |
 
 ## 🛠️ Development Commands
 
-### Infrastructure Management
+All commands are run from the workspace root (`~/projects/vh/wsp`) unless otherwise specified.
+
+See the full list of available development commands by running:
 
 ```bash
-# Start development infrastructure
-task dev:up
-
-# Stop development infrastructure  
-task dev:stop
-
-# Tear down development infrastructure (containers)
-task dev:down
-
-# Clean everything (containers + volumes)
-task dev:clean
-
-# View infrastructure logs
-task dev:logs
-
-# Check service status
-task dev:status
+task -l
 ```
 
-### Service Development
-
-```bash
-# Run all services locally (requires infrastructure)
-task run:all
-```
-
-### Database Management
-
-```bash
-# Run migrations for all services
-task dev:migrate
-
-# Shortcuts to open a psql shell for each service:
-task profiles:db:shell
-task orders:db:shell
-task events:db:shell
-```
-
-### Testing
-
-```bash
-# Run tests for all services
-task test:all
-
-# Run integration tests (infrastructure up first)
-task test:integration
-```
-
-### Monitoring & Debugging
-
-```bash
-# Open NATS monitoring
-task dev:nats:monitor
-
-# Check service status
-task dev:status
-```
+This will display all major workspace commands for infrastructure, services, testing, migrations, frontend, backend, and utilities.
 
 ## 🔧 Configuration
 
 ### Environment Variables
 
-The workspace uses `env.dev` as a template. Copy it to `.env` and customize as needed:
+The workspace uses `env.dev` as a template. On first setup, copy it to `.env`:
 
 ```bash
 cp env.dev .env
 ```
 
+Key configuration variables:
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`: Database credentials
+- `POSTGRES_PORT`: Database port (default: 5432)
+- `NATS_PORT`: NATS broker port (default: 4222)
+- `NGINX_WEB_PORT`: Frontend proxy port (default: 8080)
+- `NGINX_API_PORT`: Backend API proxy port (default: 9000)
+
+### Frontend Configuration
+
+Each frontend project uses `config-dev.js` for local development:
+
+- **Location**: `public/config/config-dev.js` or `public/config-dev.js`
+- **Purpose**: Points frontend to backend API and Keycloak endpoints
+- **Example**: Set API base URL to `http://localhost:9000` for local backend
+
+Frontend projects also include `.env.development` files:
+- `PORT`: Webpack dev server port
+- `BROWSER=none`: Prevents auto-opening browser
+- `PUBLIC_URL`: React Router base path
+
+### Backend Configuration
+
+Each backend service uses `.env` files:
+- Database connection strings
+- NATS connection details
+- Keycloak configuration
+- Service-specific settings
+
 ## 🐳 Docker Services
 
-### Infrastructure Services
+Services are organized into Docker Compose profiles. Use `task` commands which handle profiles automatically.
 
-- **db**: PostgreSQL for all services data
-- **nats**: NATS JetStream for messaging
+### Profile System
+
+| Profile | Services | Use Case |
+|---------|----------|----------|
+| `infra` | PostgreSQL, NATS | Infrastructure only |
+| `backend` | Backend containers | Backend service containers |
+| `web` | Nginx reverse proxy | Proxy services |
+| `web-app` | Frontend containers | Frontend application containers |
+
+### Service Details
+
+**Infrastructure (`infra` profile):**
+- `db`: PostgreSQL database for all services
+- `nats`: NATS JetStream message broker
+
+**Web (`web` profile):**
+- `nginx`: Reverse proxy for frontend and API routing
+
+**Backend (`backend` profile):**
+- Backend service containers
+
+**Web Apps (`web-app` profile):**
+- Frontend application containers
+
+## 🌐 Frontend Development Details
+
+### Development Modes
+
+| Mode | Frontend | Backend | Use Case |
+|------|----------|---------|----------|
+| Frontend Dev | Host (hot-reload) | Containers | Frontend development |
+| Backend Dev | Containers | Host (debuggable) | Backend development |
+
+### Service Ports and URLs
+
+| Service | Direct Port | Proxy Port | Access URL |
+|---------|-------------|------------|------------|
+| **Frontend Apps** |
+| vh-front | 3000 | 8080 | http://localhost:8080 |
+| vh-dash | 3001 | 8080 | http://localhost:8080/dash |
+| vh-payment | 3002 | 8080 | http://localhost:8080/pay |
+| **Backend APIs** |
+| vh-srv-profile | 7471 | 9000 | http://localhost:9000/profile/v1 |
+| vh-srv-events | 7475 | 9000 | http://localhost:9000/events/v1 |
+| orders | 8185 | 9000 | http://localhost:9000/pay |
+| **Infrastructure** |
+| PostgreSQL | 5432 | - | localhost:5432 |
+| NATS | 4222 | - | localhost:4222 |
 
 ## 🔍 Troubleshooting
 
 ### Common Issues
 
-1. **Port conflicts**: Ensure ports 5432, 4222, 8222 are available. You can change these in .env
-2. **Database connection issues**: Check if infrastructure is running with `task dev:status`
-3. **Migration failures**: Ensure databases are healthy before running migrations
+**Port Conflicts**
+- Ensure ports 5432, 4222, 8222, 8080, 9000 are available
+- Change ports in `.env` if needed
 
-### Debugging
+**Database Connection Issues**
+- Verify infrastructure is running: `task infra:status`
+- Check database is healthy: `task profiles:db:shell`
+
+**Migration Failures**
+- Ensure databases are running before migrations
+- Check database logs: `task infra:logs`
+
+**Service Not Starting**
+- Check service logs in respective project directories
+- Verify environment variables are set correctly
+- Ensure infrastructure is running
+
+### Debugging Commands
 
 ```bash
-# Check Infra containers logs
-task dev:logs
+# Check infrastructure logs
+task infra:logs
 
-# Open a psql shell for each service:
+# Open database shells
 task profiles:db:shell
 task orders:db:shell
 task events:db:shell
 
 # Monitor NATS
-task dev:nats:monitor
+task infra:nats:monitor
+
+# Check service status
+task infra:status
 ```
 
 ### Clean Reset
 
+If things get into a bad state:
+
 ```bash
-# Complete cleanup
+# Complete cleanup (removes containers and volumes)
 ./scripts/dev-clean.sh
 
 # Fresh setup
 ./scripts/dev-setup.sh
 ```
 
-## 🌐 Frontend Development
-
-The development environment now includes nginx reverse proxy for frontend applications, supporting both hot-reload development and containerized deployment.
-
-### Development Modes
-
-| Mode | Frontend | Backend | Use Case |
-|------|----------|---------|----------|
-| Frontend Dev | Host (hot-reload) | Containers | FE development, API mocking |
-| Backend Dev | Containers | Host (debuggable) | BE development, testing |
-
-### Services and Ports
-
-| Service | Mode | Direct Port | Proxy Port | Access URL |
-|---------|------|-------------|------------|------------|
-| **Frontend Apps** |
-| vh-front | Host | 3000 | 8080 | http://localhost:8080 |
-| vh-front | Container | - | 8080 | http://localhost:8080 |
-| vh-dash | Host | 3001 | 8080 | http://localhost:8080/dash |
-| vh-dash | Container | - | 8080 | http://localhost:8080/dash |
-| vh-payment | Host | 3002 | 8080 | http://localhost:8080/pay |
-| vh-payment | Container | - | 8080 | http://localhost:8080/pay |
-| **Backend APIs** |
-| vh-srv-profile | Always Host | 7471 | 9000 | http://localhost:9000/profile/v1 |
-| vh-srv-events | Always Host | 7475 | 9000 | http://localhost:9000/events/v1 |
-| orders | Always Host | 8185 | 9000 | http://localhost:9000/pay |
-| **Infrastructure** |
-| PostgreSQL | Container | 5432 | - | localhost:5432 |
-| NATS | Container | 4222 | - | localhost:4222 |
-| Nginx Proxy | Container | - | 8080, 9000 | - |
-
-### Quick Start - Frontend Dev Mode
-
-For frontend developers who need hot-reload and direct code editing:
-
-```bash
-# Start infra + backends (containers) + nginx
-cd ~/projects/vh/wsp
-task dev:full:host
-
-# Start frontend dev servers (hot-reload)
-cd ~/projects/vh/vh-front && yarn start
-cd ~/projects/vh/vh-dash && yarn start
-cd ~/projects/vh/pay/vh-payment && yarn start
-
-# Access applications
-open http://localhost:8080
-```
-
-### Quick Start - Backend Dev Mode
-
-For backend developers who need to debug and modify backend services:
-
-```bash
-# Start infra + frontends (containers) + nginx
-cd ~/projects/vh/wsp
-task dev:full:container
-
-# Start backend services for development
-cd ~/projects/vh/vh-srv-profile && task run
-cd ~/projects/vh/vh-srv-events && task run
-cd ~/projects/vh/pay/orders && task run
-
-# Access applications
-open http://localhost:8080
-```
-
-### Web Proxy Management
-
-```bash
-# Start nginx proxy only
-task dev:web:up
-
-# Stop nginx proxy
-task dev:web:down
-
-# View nginx logs
-task dev:web:logs
-
-# Restart nginx (reload config)
-task dev:web:restart
-
-# Reload nginx config without restart
-task dev:web:reload
-```
-
-### How .env.development Works
-
-Each frontend project includes a `.env.development` file that Create React App automatically loads when running `yarn start`:
-
-- `PORT`: Configures webpack dev server port
-- `BROWSER=none`: Prevents auto-opening browser tabs
-- `PUBLIC_URL`: Configures React Router base path for assets
-
-These files are committed to git and shared by the team.
-
-## Development workflows
-
-### Backend single service
-  
-Use the standalone infra mode. In the project folder, use `dev:standalone:*` (alias `dev:s:*`) tasks.
-
-
-```bash
-# See the list of tasks 
-cd ~/projects/vh/vh-srv-profile && task
-
-# Bring up standalone infra
-task dev:s:up
-
-```
-
-Test/run/debug in the IDE or project level tasks (`dev`, `test`, `run`)
-
-
-### Backend multiple service
-
-Use the shared infra mode in the workspace project.
-
-```bash
-# Bring up and prepare shared infra
-cd ~/project/vh/wsp && task dev:up dev:migrate
-```
-
-Test/run/debug each service individualy in the IDE or project level tasks (`dev`, `test`, `run`)
-
-
-
-### Backend with local frontend
-Want to drive your backend using the ui? Need a custom ui branch?
-
-Use the workspace project. 
-1. Clone the relevant frontends repos
-2. Switch to relevant branches
-3. Configure env per repo (`config-dev.js`) to point to `localhost:9000` backend
-4. In workspace, use the `dev:full:container` task to bring up nginx and web apps containers.
-
-### Frontend 
-Either single or multiple apps, you need a backend and keycloak. 
-The backend and keycloak you choose must be in sync. Meaning, the backend's DB must have the users matching the keycloak you choose.
-Possible combinations:
-* External environment, staging or production.
-* Local backend, external keycloak.
-* Local backend and keycloak. Still not available option.
-
----
-External environment is the easiest. Just have the correct `config-dev.js` and you're good to go.
-
-When it is not good enough?
-* Staging is missing data. No payments, no cron jobs, etc...
-* Production is great but dangerous. Real payments, real data, even your own user...
-
----
-Local backend, external keycloak, provides greater flexibility and safety but requires more effort.
-
-Use the workspace project.
-1. Clone the relevant backend repos
-2. Switch to relevant branches
-3. Configure env per repo (`.env`) to use the keycloak you choose.
-4. In workspace, use the `dev:full:host` task to bring up nginx, backend and infra containers.
-5. Optional. Load a production db dump (see `replica` in workspace project). You can modify as much as you want and easily restore again if needed.
-
---- 
-
-#### Frontend single app
-
-No cross navigation? no problem. Just `yarn start` and access directly. 
-
-#### Frontend multiple apps
-
-Need cross app navigation? use the workspace project.
-When you bring up the nginx proxy, you can access all frontend apps via the proxy (`localhost:8080`). This mimic production routing.
-Hot reload should still be supported.
-
-
-
 ## 🤖 Model Context Protocol (MCP) Servers
 
-This workspace includes MCP servers that enable AI assistants (like Cursor AI) to interact with your development environment. These servers provide enhanced capabilities for database queries, code navigation, and development workflow automation.
+This workspace includes MCP servers that enable AI assistants (like Cursor AI) to interact with your development environment, providing enhanced capabilities for database queries, code navigation, and workflow automation.
 
 ### Available MCP Servers
 
-All MCP servers are configured in `.cursor/mcp.json` and run via npx commands (on-demand execution).
+All MCP servers are configured in `.cursor/mcp.json` and run automatically via npx when needed.
 
-| Server | Description | Configuration |
-|--------|-------------|---------------|
-| **PostgreSQL (Profiles)** | Database query access to profiles DB | `.cursor/mcp.json` |
-| **PostgreSQL (Orders)** | Database query access to orders DB | `.cursor/mcp.json` |
-| **PostgreSQL (Events)** | Database query access to events DB | `.cursor/mcp.json` |
-| **Replica (Profiles)** | Read-only access to profiles replica | `.cursor/mcp.json` |
-| **Replica (Orders)** | Read-only access to orders replica | `.cursor/mcp.json` |
-| **Replica (Events)** | Read-only access to events replica | `.cursor/mcp.json` |
-| **GitLab** | GitLab repository access (self-hosted) | `.cursor/mcp.json` |
-| **NATS** | NATS JetStream subjects/consumers explorer | `.cursor/mcp.json` |
-| **Filesystem** | Enhanced file system operations | `.cursor/mcp.json` |
-| **Shell** | Command execution for Taskfile/scripts | `.cursor/mcp.json` |
+| Server | Description |
+|--------|-------------|
+| **PostgreSQL (Profiles/Orders/Events)** | Database query access to each service DB |
+| **Replica (Profiles/Orders/Events)** | Read-only access to production replicas |
+| **GitLab** | GitLab repository access (self-hosted) |
+| **NATS** | NATS JetStream subjects/consumers explorer |
+| **Filesystem** | Enhanced file system operations |
+| **Shell** | Command execution for Taskfile/scripts |
 
 ### Setup
 
-MCP servers are configured in `.cursor/mcp.json` and run automatically via npx when Cursor needs them. No manual startup required - servers are launched on-demand when you interact with the AI assistant.
+MCP servers run automatically - no manual startup required. They launch on-demand when you interact with the AI assistant.
 
-#### Configuration Requirements
+**Configuration Requirements:**
 
-1. **PostgreSQL Connection**: Connection strings are pre-configured in `.cursor/mcp.json`
+1. **PostgreSQL Connection**: Pre-configured in `.cursor/mcp.json`
    - Default: `postgresql://user:password@localhost:5432/{database}?sslmode=disable`
-   - Update connection strings in `.cursor/mcp.json` if your PostgreSQL credentials differ
+   - Update if your credentials differ
 
 2. **GitLab Token**: Required for GitLab MCP server
-   - Create a personal access token at `https://gitlab.bbdev.team/-/profile/personal_access_tokens`
-   - Token needs `api` scope
+   - Create token at `https://gitlab.bbdev.team/-/profile/personal_access_tokens`
+   - Needs `api` scope
    - Replace `your-gitlab-token-here` in `.cursor/mcp.json`
 
-3. **Filesystem Access**: Configured to access `/Users/edoshor/projects/vh`
-   - Adjust path in `.cursor/mcp.json` if your workspace is located elsewhere
+3. **Filesystem Access**: Configured for `/Users/edoshor/projects/vh`
+   - Adjust path in `.cursor/mcp.json` if your workspace is elsewhere
 
-### What MCP Servers Enable
+### Capabilities
 
-- **PostgreSQL Servers**: Query databases, inspect schemas, run migrations, analyze data patterns
-- **GitLab Server**: Browse repositories, read issues/MRs, search code, check CI/CD pipelines
-- **NATS Server**: Explore JetStream subjects, view consumers, inspect message queues, debug event flows
-- **Filesystem Server**: Enhanced file operations, code navigation, multi-directory access
-- **Shell Server**: Execute commands, run Taskfile tasks, execute migrations and tests
+- **PostgreSQL**: Query databases, inspect schemas, run migrations, analyze data
+- **GitLab**: Browse repositories, read issues/MRs, search code, check CI/CD
+- **NATS**: Explore JetStream subjects, view consumers, debug event flows
+- **Filesystem**: Enhanced file operations, code navigation
+- **Shell**: Execute commands, run Taskfile tasks, execute migrations and tests
 
 ### Troubleshooting
 
 - **Servers not connecting**: Restart Cursor after configuration changes
-- **npx packages downloading slowly**: First run downloads packages - subsequent runs are faster
-- **PostgreSQL MCP errors**: Ensure databases are running and accessible
-- **GitLab authentication issues**: Verify token has correct scopes and is not expired
+- **Slow first run**: npx downloads packages on first use - subsequent runs are faster
+- **PostgreSQL errors**: Ensure databases are running and accessible
+- **GitLab auth issues**: Verify token has correct scopes and is not expired
 
 For more information, see the [Model Context Protocol documentation](https://modelcontextprotocol.io/).
 
@@ -400,9 +444,9 @@ For more information, see the [Model Context Protocol documentation](https://mod
 
 ## 🤝 Contributing
 
-When adding new services or dependencies:
+When adding new services or dependencies to the workspace:
 
-1. Update `docker-compose.yml`
+1. Update `docker-compose.yml` with new services
 2. Add service-specific tasks to `Taskfile.yml`
 3. Update environment variables in `env.dev`
 4. Add initialization scripts if needed

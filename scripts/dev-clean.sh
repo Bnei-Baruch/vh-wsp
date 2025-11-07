@@ -15,10 +15,10 @@ echo "🧹 Cleaning Virtual Home Development Environment..."
 echo "🛑 Stopping and removing containers..."
 
 # Stop all development containers
-task dev:down 2>/dev/null || echo "ℹ️  No containers to stop"
+task all:down 2>/dev/null || echo "ℹ️  No containers to stop"
 
 # Clean up containers and volumes
-task dev:clean
+task all:clean
 
 # =============================================================================
 # REMOVE DOCKER VOLUMES
