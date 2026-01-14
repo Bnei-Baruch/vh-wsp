@@ -72,6 +72,7 @@ tasks:
     desc: Start all development infrastructure (PostgreSQL + NATS)
     cmds:
       - docker compose --profile infra up -d
+      - docker exec vh-dev-db psql -U {{.POSTGRES_USER}} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;" >/dev/null;
       - echo "All development infrastructure started!"
       - 'echo "Shared PostgreSQL: localhost:{{.POSTGRES_PORT}}"'
       - 'echo "Shared NATS: localhost:{{.NATS_PORT}} (monitoring: localhost:{{.NATS_MONITOR_PORT}})"'
