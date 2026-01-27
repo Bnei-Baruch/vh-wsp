@@ -1,8 +1,14 @@
 .env
-*.log
 
-# Replica dump files
-replica/dumps/*.dump
-replica/dumps/*.custom
+# Replica dump files - ignore all except .gitkeep
+replica/dumps/*
+!replica/dumps/.gitkeep
+
+# Analysis data files
+analysis/*.csv
+analysis/__pycache__/
+
+# MCP logs
+.setting.civi_staging/*.log
 
 notes.txt
