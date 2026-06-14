@@ -32,6 +32,9 @@
 		},
 		{
 			"path": "../data/vh-report-cli"
+		},
+		{
+			"path": "../vh-srv-accounting"
 		}
 	],
 	"settings": {

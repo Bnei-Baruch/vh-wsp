@@ -1,3 +1,3 @@
-events_replica:events_42ef1245-ca93-4649-a05b-1fc42f9bc5d6.custom
-orders_replica:orders_c463de52-110c-40b1-9a87-825112d2feb8.custom
-profiles_replica:profiles_9d721d25-7c9b-4f71-88e1-c0c8a625c657.custom
+events_replica:57b77c04-ee18-4c8a-b365-cb7c46dd2e6f.custom
+orders_replica:43a002b1-79b1-4c21-947c-8e2e5f635b9e.custom
+profiles_replica:3cb6a449-e211-4972-94c6-b4c4806fc510.custom
