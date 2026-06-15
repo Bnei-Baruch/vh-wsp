@@ -1,5 +1,8 @@
 .env
 
+# Cursor/MCP local config — holds personal access tokens, never commit
+.cursor/mcp.json
+
 # Replica dump files - ignore all except .gitkeep
 replica/dumps/*
 !replica/dumps/.gitkeep

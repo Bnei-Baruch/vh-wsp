@@ -10,10 +10,16 @@ from typing import Dict, List, Set, Tuple, Optional
 from enum import Enum
 from dataclasses import dataclass
 import csv
+import os
 
 
 # Database connection strings
-CIVI_STAGING_CONN = "mysql+pymysql://staging1pay_testbb_top:***REMOVED***@mysql7:3306/staging1pay_testbb_top"
+# CiVi staging password is read from the environment; never hardcode it.
+CIVI_STAGING_DB_PASSWORD = os.environ.get("CIVI_STAGING_DB_PASSWORD", "")
+CIVI_STAGING_CONN = (
+    f"mysql+pymysql://staging1pay_testbb_top:{CIVI_STAGING_DB_PASSWORD}"
+    "@mysql7:3306/staging1pay_testbb_top"
+)
 REPLICA_PROFILES_CONN = "postgresql+psycopg2://user:password@localhost:5432/profiles_replica?sslmode=disable"
 
 
