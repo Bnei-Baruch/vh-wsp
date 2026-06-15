@@ -13,13 +13,13 @@
 			"path": "../vh-dash"
 		},
 		{
-			"path": "../pay/orders"
+			"path": "../vh-srv-orders"
 		},
 		{
-			"path": "../pay/vh-payment"
+			"path": "../vh-payment"
 		},
 		{
-			"path": "../pay/vh-payment-bo"
+			"path": "../vh-payment-bo"
 		},
 		{
 			"path": "../pay/charge"

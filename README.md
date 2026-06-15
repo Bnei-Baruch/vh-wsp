@@ -15,7 +15,7 @@ This workspace provides a unified development environment for the Virtual Home m
 1. **Clone and navigate to workspace:**
    ```bash
    cd ~/projects/vh
-   git clone git@gitlab.bbdev.team:vh/wsp.git
+   git clone git@github.com:Bnei-Baruch/vh-wsp.git wsp
    cd wsp
    ```
 
@@ -167,7 +167,7 @@ Frontend development requires a backend and Keycloak instance. The backend datab
 For working on a single frontend app without cross-app navigation:
 
 ```bash
-cd ~/projects/vh/vh-front  # or vh-dash, pay/vh-payment
+cd ~/projects/vh/vh-front  # or vh-dash, vh-payment
 yarn start
 ```
 
@@ -187,7 +187,7 @@ For cross-app navigation that mimics production:
    ```bash
    cd ~/projects/vh/vh-front && yarn start
    cd ~/projects/vh/vh-dash && yarn start
-   cd ~/projects/vh/pay/vh-payment && yarn start
+   cd ~/projects/vh/vh-payment && yarn start
    ```
 
 3. **Access via proxy:**
