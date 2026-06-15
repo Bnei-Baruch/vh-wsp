@@ -4,12 +4,13 @@ version: '3'
 
 vars:
   DIR_PROFILES: '{{default "../vh-srv-profile" .DIR_PROFILES}}'
-  DIR_ORDERS:   '{{default "../pay/orders" .DIR_ORDERS}}'
+  DIR_ORDERS:   '{{default "../vh-srv-orders" .DIR_ORDERS}}'
   DIR_EVENTS:   '{{default "../vh-srv-events" .DIR_EVENTS}}'
+  DIR_ACCOUNTING: '{{default "../vh-srv-accounting" .DIR_ACCOUNTING}}'
   DIR_FRONT: '{{default "../vh-front" .DIR_FRONT}}'
   DIR_DASH: '{{default "../vh-dash" .DIR_DASH}}'
-  DIR_PAYMENT: '{{default "../pay/vh-payment" .DIR_PAYMENT}}'
-  DIR_PAYMENT_BO: '{{default "../pay/vh-payment-bo" .DIR_PAYMENT_BO}}'
+  DIR_PAYMENT: '{{default "../vh-payment" .DIR_PAYMENT}}'
+  DIR_PAYMENT_BO: '{{default "../vh-payment-bo" .DIR_PAYMENT_BO}}'
   DIR_EVENTS_BO: '{{default "../vh-events-bo" .DIR_EVENTS_BO}}'
   POSTGRES_USER: '{{default "user" .POSTGRES_USER}}'
   POSTGRES_PASSWORD: '{{default "password" .POSTGRES_PASSWORD}}'
@@ -58,10 +59,15 @@ tasks:
           DIR: 
             ref: .DIR_PROFILES
           TARGET: '{{.TARGET}}'
-      - task: _run 
+      - task: _run
         vars:
-          DIR: 
+          DIR:
             ref: .DIR_EVENTS
+          TARGET: '{{.TARGET}}'
+      - task: _run
+        vars:
+          DIR:
+            ref: .DIR_ACCOUNTING
           TARGET: '{{.TARGET}}'
 
   # =============================================================================
@@ -133,8 +139,17 @@ tasks:
     cmds:
       - task: _run
         vars:
-          DIR: 
+          DIR:
             ref: .DIR_EVENTS
+          TARGET: db:shell
+
+  accounting:db:shell:
+    desc: Open PostgreSQL shell for accounting service
+    cmds:
+      - task: _run
+        vars:
+          DIR:
+            ref: .DIR_ACCOUNTING
           TARGET: db:shell
 
   # =============================================================================
@@ -264,7 +279,7 @@ tasks:
       - echo "Database migrations completed!"
 
   backend:test:all:
-    desc: Run tests for all Go services
+    desc: Run tests for all backend services
     aliases: [be:test:all]
     cmds:
       - task: _run_all_backend_services 
@@ -284,7 +299,7 @@ tasks:
       - task: infra:stop
   
   backend:rebuild:one:
-    desc: "Rebuild a single backend service container. Options: profiles, events, orders. Default is profiles."
+    desc: "Rebuild a single backend service container. Options: profiles, events, orders, accounting. Default is profiles."
     aliases: [be:rebuild:one]
     vars:
       APP:
@@ -375,6 +390,7 @@ tasks:
         PROFILE_SERVICE_HOSTNAME=vh-srv-profiles \
         EVENTS_SERVICE_HOSTNAME=vh-srv-events \
         ORDERS_SERVICE_HOSTNAME=vh-srv-orders \
+        ACCOUNTING_SERVICE_HOSTNAME=vh-srv-accounting \
         docker compose --profile web up -d
       - echo ""
       - echo "✅ Frontend dev environment ready!"
@@ -408,6 +424,7 @@ tasks:
         PROFILE_SERVICE_HOSTNAME=host.docker.internal \
         EVENTS_SERVICE_HOSTNAME=host.docker.internal \
         ORDERS_SERVICE_HOSTNAME=host.docker.internal \
+        ACCOUNTING_SERVICE_HOSTNAME=host.docker.internal \
         docker compose --profile web --profile web-app up -d --build
       - echo ""
       - echo "✅ Backend dev environment ready!"
@@ -419,6 +436,7 @@ tasks:
       - echo "   cd {{.DIR_PROFILES}} && task run"
       - echo "   cd {{.DIR_EVENTS}} && task run"
       - echo "   cd {{.DIR_ORDERS}} && task run"
+      - echo "   cd {{.DIR_ACCOUNTING}} && task run"
 
   all:stop:
     desc: Stop all running dev services (infra, backend, web, web-app)

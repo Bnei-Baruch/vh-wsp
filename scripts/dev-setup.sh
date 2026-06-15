@@ -67,14 +67,15 @@ read -p "Choose [1/2/3/4]: " clone_choice
 
 BACKEND_REPOS=(
   "vh-srv-profile"
-  "pay/orders"
+  "vh-srv-orders"
   "vh-srv-events"
+  "vh-srv-accounting"
 )
 FRONTEND_REPOS=(
   "vh-front"
   "vh-dash"
-  "pay/vh-payment"
-  "pay/vh-payment-bo"
+  "vh-payment"
+  "vh-payment-bo"
   "vh-events-bo"
 )
 ALL_REPOS=("${BACKEND_REPOS[@]}" "${FRONTEND_REPOS[@]}")
@@ -101,13 +102,13 @@ if [ ${#TARGET_REPOS[@]} -eq 0 ]; then
   echo "No repositories selected, skipping repository clone."
 else
   echo "Cloning repositories..."
-  GITLAB_SSH_BASE="git@gitlab.bbdev.team:vh"
+  GITHUB_SSH_BASE="git@github.com:Bnei-Baruch"
   for REPO in "${TARGET_REPOS[@]}"; do
     if [ -d "../$REPO" ]; then
       echo "✔️  $REPO directory already exists, skipping clone."
     else
       echo "➡️  Cloning $REPO..."
-      git clone "$GITLAB_SSH_BASE/$REPO.git" ../$REPO
+      git clone "$GITHUB_SSH_BASE/$REPO.git" ../$REPO
     fi
   done
 

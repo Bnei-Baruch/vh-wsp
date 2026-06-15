@@ -42,7 +42,7 @@ The development environment supports **full-stack development** including both b
 
 **Core architecture includes:**
 
-- **Backend Services**: Go-based microservices for profile management, events, orders, and payments, each with its own database schema and business logic.
+- **Backend Services**: Microservices for profile management, events, orders, payments, and accounting integrations (Go services plus the Node/TypeScript accounting service), each with its own database schema and business logic.
 - **Frontend Applications**: React-based dashboards and web portals (e.g., membership pay, management dashboard), with local development configs for easy frontend-backend integration.
 - **Infrastructure**: 
   - Shared PostgreSQL databases for persistent storage
@@ -69,7 +69,7 @@ For working on a single backend service in isolation:
 
 1. **Navigate to the service directory:**
    ```bash
-   cd ~/projects/vh/vh-srv-profile  # or vh-srv-events, pay/orders
+   cd ~/projects/vh/vh-srv-profile  # or vh-srv-events, vh-srv-orders, vh-srv-accounting
    ```
 
 2. **Use standalone infrastructure mode:**
@@ -104,7 +104,8 @@ For working with multiple backend services that need to interact:
    # In separate terminals or via IDE:
    cd ~/projects/vh/vh-srv-profile && task run
    cd ~/projects/vh/vh-srv-events && task run
-   cd ~/projects/vh/pay/orders && task run
+   cd ~/projects/vh/vh-srv-orders && task run
+   cd ~/projects/vh/vh-srv-accounting && task run
    ```
 
 All services share the same PostgreSQL and NATS instances, enabling integration testing.
@@ -117,8 +118,8 @@ When you need to test your backend changes with a UI:
    ```bash
    # Clone relevant frontends
    cd ~/projects/vh
-   git clone git@gitlab.bbdev.team:vh/vh-front.git
-   git clone git@gitlab.bbdev.team:vh/vh-dash.git
+   git clone git@github.com:Bnei-Baruch/vh-front.git
+   git clone git@github.com:Bnei-Baruch/vh-dash.git
    # ... etc
    ```
 
@@ -199,7 +200,7 @@ For cross-app navigation that mimics production:
 1. **Clone and configure backend repositories:**
    ```bash
    cd ~/projects/vh
-   git clone git@gitlab.bbdev.team:vh/vh-srv-profile.git
+   git clone git@github.com:Bnei-Baruch/vh-srv-profile.git
    # ... clone other backends
    ```
 
@@ -328,6 +329,7 @@ Services are organized into Docker Compose profiles. Use `task` commands which h
 | vh-srv-profile | 7471 | 9000 | http://localhost:9000/profile/v1 |
 | vh-srv-events | 7475 | 9000 | http://localhost:9000/events/v1 |
 | orders | 8185 | 9000 | http://localhost:9000/pay |
+| vh-srv-accounting | 8190 | 9000 | http://localhost:9000/accounting/v1 |
 | **Infrastructure** |
 | PostgreSQL | 5432 | - | localhost:5432 |
 | NATS | 4222 | - | localhost:4222 |
@@ -363,6 +365,7 @@ task infra:logs
 task profiles:db:shell
 task orders:db:shell
 task events:db:shell
+task accounting:db:shell
 
 # Monitor NATS
 task infra:nats:monitor

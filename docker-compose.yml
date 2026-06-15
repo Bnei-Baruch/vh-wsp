@@ -80,6 +80,7 @@ services:
       - PROFILES_APP_PORT=${PROFILES_APP_PORT:-7471}
       - EVENTS_APP_PORT=${EVENTS_APP_PORT:-7475}
       - ORDERS_APP_PORT=${ORDERS_APP_PORT:-8185}
+      - ACCOUNTING_APP_PORT=${ACCOUNTING_APP_PORT:-8190}
       - NGINX_WEB_PORT=${NGINX_WEB_PORT:-8080}
       - NGINX_API_PORT=${NGINX_API_PORT:-9000}
       # DNS resolver (defaults to Docker's embedded DNS, can be overridden)
@@ -94,6 +95,7 @@ services:
       - PROFILE_SERVICE_HOSTNAME=${PROFILE_SERVICE_HOSTNAME:-host.docker.internal}
       - EVENTS_SERVICE_HOSTNAME=${EVENTS_SERVICE_HOSTNAME:-host.docker.internal}
       - ORDERS_SERVICE_HOSTNAME=${ORDERS_SERVICE_HOSTNAME:-host.docker.internal}
+      - ACCOUNTING_SERVICE_HOSTNAME=${ACCOUNTING_SERVICE_HOSTNAME:-host.docker.internal}
     networks:
       - vh-dev-network
     healthcheck:
@@ -131,12 +133,12 @@ services:
       
   orders:
     build:
-      context: ${DIR_ORDERS:-../pay/orders}
+      context: ${DIR_ORDERS:-../vh-srv-orders}
       dockerfile: Dockerfile
     container_name: vh-srv-orders
     restart: unless-stopped
     profiles: ["backend"]
-    env_file: ${DIR_ORDERS:-../pay/orders}/.env
+    env_file: ${DIR_ORDERS:-../vh-srv-orders}/.env
     environment:
       PGHOST: vh-dev-db
       PGPORT: ${POSTGRES_PORT:-5432}
@@ -170,6 +172,29 @@ services:
       - vh-dev-network
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:${NGINX_API_PORT}/events/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  accounting:
+    build:
+      context: ${DIR_ACCOUNTING:-../vh-srv-accounting}
+      dockerfile: Dockerfile
+    container_name: vh-srv-accounting
+    restart: unless-stopped
+    profiles: ["backend"]
+    env_file: ${DIR_ACCOUNTING:-../vh-srv-accounting}/.env
+    environment:
+      APP_PORT: ${ACCOUNTING_APP_PORT:-8190}
+      PGHOST: vh-dev-db
+      PGPORT: ${POSTGRES_PORT:-5432}
+      PGUSER: ${POSTGRES_USER:-user}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-password}
+      PGDATABASE: accounting
+    networks:
+      - vh-dev-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${ACCOUNTING_APP_PORT:-8190}/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -220,7 +245,7 @@ services:
 
   vh-payment:
     build:
-      context: ${DIR_PAYMENT:-../pay/vh-payment}
+      context: ${DIR_PAYMENT:-../vh-payment}
       dockerfile: Dockerfile
       args:
         PUBLIC_URL: "http://localhost:${NGINX_WEB_PORT}/pay"
@@ -240,7 +265,7 @@ services:
 
   vh-payment-bo:
     build:
-      context: ${DIR_PAYMENT_BO:-../pay/vh-payment-bo}
+      context: ${DIR_PAYMENT_BO:-../vh-payment-bo}
       dockerfile: Dockerfile
       args:
         PUBLIC_URL: "http://localhost:${NGINX_WEB_PORT}/admin/payments"
